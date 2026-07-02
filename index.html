@@ -15,7 +15,7 @@
   html,body{width:100%;height:100%;overflow:hidden;background:#0c2a16;
     font-family:-apple-system,"Hiragino Maru Gothic ProN","Hiragino Sans","Yu Gothic",sans-serif;
     touch-action:none;overscroll-behavior:none;-webkit-user-select:none;user-select:none;}
-  #cv{position:fixed;inset:0;display:block;image-rendering:pixelated;}
+  #cv{position:fixed;inset:0;width:100%;height:100%;display:block;image-rendering:pixelated;max-width:100vw;max-height:100vh;}
 
   /* うっすらCRT走査線 */
   #scan{position:fixed;inset:0;z-index:5;pointer-events:none;
@@ -140,10 +140,23 @@ let PIX = 4, VW = 320, VH = 180;         // 仮想解像度（ファミコン風
 const bcv = document.createElement("canvas");
 const b = bcv.getContext("2d");
 
+function viewportSize(){
+  // iPadのSafariはpinch-zoom時やUI表示中にinnerWidth/Heightが実視野とズレることがあるため、
+  // visualViewportが使えるならそちらを優先する（より正確な"実際に見えている幅"を返す）
+  if(window.visualViewport){
+    return {
+      w: Math.round(window.visualViewport.width),
+      h: Math.round(window.visualViewport.height),
+    };
+  }
+  return { w: window.innerWidth, h: window.innerHeight };
+}
+
 function resize(){
   dpr = Math.min(window.devicePixelRatio || 1, 2);
-  W = window.innerWidth; H = window.innerHeight;
-  cv.width = W * dpr; cv.height = H * dpr;
+  const vp = viewportSize();
+  W = vp.w; H = vp.h;
+  cv.width = Math.round(W * dpr); cv.height = Math.round(H * dpr);
   ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
   PIX = Math.max(2, Math.round(W / 320));
   VW = Math.ceil(W / PIX); VH = Math.ceil(H / PIX);
@@ -152,6 +165,18 @@ function resize(){
   ctx.imageSmoothingEnabled = false;
 }
 window.addEventListener("resize", resize);
+if(window.visualViewport){
+  window.visualViewport.addEventListener("resize", resize);
+}
+// iPadは回転直後、ブラウザUIの再レイアウトが終わる前にresizeイベントが
+// 古い寸法で発火することがあるため、少し遅らせて再計測する（2段構え）
+window.addEventListener("orientationchange", ()=>{
+  resize();
+  setTimeout(resize, 60);
+  setTimeout(resize, 300);
+});
+// bfcache復帰（戻る/進むで再表示された場合）にも寸法がズレていることがあるため再計測
+window.addEventListener("pageshow", (e)=>{ if(e.persisted) resize(); });
 resize();
 
 /* ---------- utils ---------- */
@@ -994,7 +1019,10 @@ function render(){
   ctx.imageSmoothingEnabled=false;
   const shX = shake>0 ? Math.round(rand(-shake,shake))*PIX : 0;
   const shY = shake>0 ? Math.round(rand(-shake,shake))*PIX : 0;
-  ctx.drawImage(bcv, 0,0,VW,VH, shX,shY, VW*PIX, VH*PIX);
+  // 転写先はVW*PIX（丸め誤差でWを僅かに超えうる）ではなく、必ずW,Hぴったりに描く。
+  // ドット比が1/VW未満の誤差でずれるだけなので見た目のクリスプさは保ったまま、
+  // 画面幅からのはみ出しを構造的にゼロにできる。
+  ctx.drawImage(bcv, 0,0,VW,VH, shX,shY, W, H);
 
   /* ===== HUD（実画面・角ばったファミコン窓）===== */
   if(state==="play"||state==="dying"||state==="pause"){
