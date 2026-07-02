@@ -533,30 +533,79 @@ window.addEventListener("keydown", e=>{ keys[e.key]=true; if(e.key.startsWith("A
 window.addEventListener("keyup",   e=>{ keys[e.key]=false; });
 
 let tiltRaw = 0, tiltNeutral = null, tiltAvailable = false;
-// ハンドル操作は「ヨー(alpha)」＝ 縦向きに構えたiPadを左右にひねる回転で検知する。
-// alphaは0〜360度で周回するため、ニュートラル値からの差は必ず最短角(-180〜180)で計算する
-// （例：350°→10°の差は+20°であって-340°ではない）。
+/*
+ * ハンドル操作の検知方式について
+ * ------------------------------------------------------------
+ * 「iPadを横向きに立てて、画面をプレイヤーに向けたまま、実際の車の
+ * ハンドルのように左右にひねる」動きを検知したい。この姿勢は画面の
+ * 法線（画面の向いている方向）がほぼ水平になる姿勢で、実はこれは
+ * deviceorientationのオイラー角(alpha/beta/gamma)にとって
+ * 「ジンバルロック」に極めて近い不安定な領域にあたる。
+ * （alpha＝ヨーは端末が水平・画面が真上を向いている状態でこそ素直に
+ * 機能する量で、垂直に立てた状態でのひねりには向かない。beta/gammaも
+ * この姿勢ではalphaと軸が実質的に重なってしまい、値が暴れやすい。）
+ *
+ * そこで、オイラー角の分解に頼らず、加速度センサが直接返す
+ * 「重力を含む加速度ベクトル」(devicemotionイベントの
+ * accelerationIncludingGravity）を使う。これは端末ローカル座標系
+ * （x=画面右、y=画面上、z=画面奥）でそのまま得られる実測ベクトルなので、
+ * ジンバルロックが起きない。端末を垂直に立てて構えると画面の法線(z)は
+ * ほぼ水平になり、重力は画面平面内(x,y)にほぼ収まる。ハンドルのように
+ * 画面をひねる（screen-normal軸まわりに回転させる）と、この重力ベクトルの
+ * x,y内での向きがそのまま追従して回転するので、atan2(x,y)で
+ * 「ひねり角」を安定して取り出せる。
+ */
 function angleDelta(a, b){
+  // 角度の最短差分（-180〜180）。周回をまたぐ場合も正しく扱う。
   let d = (a - b + 180) % 360;
   if(d < 0) d += 360;
   return d - 180;
 }
-// 端末を180度回転して構える（画面の向きが逆）と、同じ「左にひねる」動作でも
-// alphaの増減方向が逆転するため、画面の向き(angle)に応じて符号を補正する。
-// 実機で左右の感覚が逆だった場合はここを -1 にしてください。
+// 【実機調整用】操舵の向きが逆に感じたら ±1 を切り替えてください。
+// センサーの物理的な軸の向きは端末実機でしか確定できないため、
+// ここだけは動作確認しながらの微調整が必要です。
 const YAW_SIGN = 1;
+
+let usingMotion = false; // devicemotionで検知できている間はtrue（deviceorientationへのフォールバックを止める）
+
+function onMotion(e){
+  const g = e.accelerationIncludingGravity;
+  if(!g || (g.x===null && g.y===null)) return;
+  usingMotion = true;
+  const ang = (screen.orientation && screen.orientation.angle!==undefined)
+              ? screen.orientation.angle : (window.orientation||0);
+  // 端末を180度回転して構える（画面の向きが逆）と、同じ「左にひねる」動作でも
+  // 重力ベクトルの回転方向が逆転するため、画面の向きに応じて符号を補正する。
+  const flip = (ang===-90||ang===270) ? -1 : 1;
+  const raw = Math.atan2(g.x, g.y) * 180/Math.PI; // -180〜180、画面平面内での向き
+  tiltAvailable = true;
+  tiltRaw = raw * flip * YAW_SIGN;
+  if(tiltNeutral===null) tiltNeutral = tiltRaw;
+}
+window.addEventListener("devicemotion", onMotion);
+
+// devicemotionが取れない環境向けの保険（従来のdeviceorientation方式）。
+// devicemotionが使えている間はこちらは無視される。
 function onOrient(e){
-  if(e.alpha===null) return;
+  if(usingMotion) return;
+  if(e.beta===null && e.gamma===null) return;
   tiltAvailable = true;
   const ang = (screen.orientation && screen.orientation.angle!==undefined)
               ? screen.orientation.angle : (window.orientation||0);
-  const flip = (ang===-90||ang===270) ? -1 : 1;
-  tiltRaw = e.alpha * flip * YAW_SIGN;
+  let t;
+  if(ang===90)                 t =  e.beta;
+  else if(ang===-90||ang===270)t = -e.beta;
+  else                         t =  e.gamma;
+  tiltRaw = (t||0) * YAW_SIGN;
   if(tiltNeutral===null) tiltNeutral = tiltRaw;
 }
 window.addEventListener("deviceorientation", onOrient);
 
 async function requestTiltPermission(){
+  if(typeof DeviceMotionEvent!=="undefined" &&
+     typeof DeviceMotionEvent.requestPermission==="function"){
+    try{ await DeviceMotionEvent.requestPermission(); }catch(e){}
+  }
   if(typeof DeviceOrientationEvent!=="undefined" &&
      typeof DeviceOrientationEvent.requestPermission==="function"){
     try{ await DeviceOrientationEvent.requestPermission(); }catch(e){}
