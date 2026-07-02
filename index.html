@@ -86,10 +86,11 @@
   <div class="board">
     <h2>あそびかた</h2>
     <div class="rules">
-      🚙 <b>iPadを左右にかたむけて</b>ハンドル操作（PCは ← → キー）／アクセルは全自動<br>
+      🚙 <b>iPadを左右にひねって</b>ハンドル操作（PCは ← → キー）／アクセルは全自動<br>
       🕳 ギザギザの<b>穴</b>に落ちたらゲームオーバー ｜ 🌊 <b>川</b>は<b>橋</b>を渡らないとドボン<br>
       ⭐ <b>スター</b>で一定時間むてき（点滅中は穴も川も通過OK）<br>
       ⚡ <b>ターボ</b>で加速＆岩を粉砕 ｜ 🪨 岩・🟤 まるい<b>ぬかるみ</b>はスピードダウン<br>
+      💥 岩に<b>3回</b>ぶつかるとゲームオーバー ｜ 🌲 森に<b>5秒</b>以上入るとゲームオーバー<br>
       🛣 道の外はガタガタで超スロー！ どこまで走れるかキョリで勝負！
     </div>
   </div>
@@ -511,6 +512,8 @@ function sfx(name){
     case "smash":  noiseBurst(.12,.25); beep(160,.15,"square",.15); break;
     case "hole":   beep(400,.5,"square",.18,-320); break;
     case "splash": noiseBurst(.5,.3,true); beep(220,.4,"triangle",.1,-120); break;
+    case "crash":  noiseBurst(.3,.4); beep(140,.35,"square",.2,-90); break;
+    case "lost":   beep(260,.6,"triangle",.15,-140); setTimeout(()=>beep(180,.4,"triangle",.12,-60),200); break;
     case "mile":   beep(660,.1,"square",.14); setTimeout(()=>beep(990,.18,"square",.14),90); break;
   }
 }
@@ -530,16 +533,25 @@ window.addEventListener("keydown", e=>{ keys[e.key]=true; if(e.key.startsWith("A
 window.addEventListener("keyup",   e=>{ keys[e.key]=false; });
 
 let tiltRaw = 0, tiltNeutral = null, tiltAvailable = false;
+// ハンドル操作は「ヨー(alpha)」＝ 縦向きに構えたiPadを左右にひねる回転で検知する。
+// alphaは0〜360度で周回するため、ニュートラル値からの差は必ず最短角(-180〜180)で計算する
+// （例：350°→10°の差は+20°であって-340°ではない）。
+function angleDelta(a, b){
+  let d = (a - b + 180) % 360;
+  if(d < 0) d += 360;
+  return d - 180;
+}
+// 端末を180度回転して構える（画面の向きが逆）と、同じ「左にひねる」動作でも
+// alphaの増減方向が逆転するため、画面の向き(angle)に応じて符号を補正する。
+// 実機で左右の感覚が逆だった場合はここを -1 にしてください。
+const YAW_SIGN = 1;
 function onOrient(e){
-  if(e.beta===null && e.gamma===null) return;
+  if(e.alpha===null) return;
   tiltAvailable = true;
   const ang = (screen.orientation && screen.orientation.angle!==undefined)
               ? screen.orientation.angle : (window.orientation||0);
-  let t;
-  if(ang===90)                 t =  e.beta;
-  else if(ang===-90||ang===270)t = -e.beta;
-  else                         t =  e.gamma;
-  tiltRaw = t||0;
+  const flip = (ang===-90||ang===270) ? -1 : 1;
+  tiltRaw = e.alpha * flip * YAW_SIGN;
   if(tiltNeutral===null) tiltNeutral = tiltRaw;
 }
 window.addEventListener("deviceorientation", onOrient);
@@ -552,7 +564,7 @@ async function requestTiltPermission(){
 }
 function currentSteer(){
   let s = 0;
-  if(tiltAvailable && tiltNeutral!==null) s = clamp((tiltRaw-tiltNeutral)/20, -1, 1);
+  if(tiltAvailable && tiltNeutral!==null) s = clamp(angleDelta(tiltRaw, tiltNeutral)/20, -1, 1);
   if(keys["ArrowLeft"])  s = -1;
   if(keys["ArrowRight"]) s =  1;
   if(keys["ArrowLeft"]&&keys["ArrowRight"]) s = 0;
@@ -570,6 +582,7 @@ let state = "title";
 let dist = 0;
 let carX = 0, carVX = 0;
 let invT = 0, turboT = 0, knockT = 0, mudOn = false, offRoad = false;
+let rockHits = 0, forestT = 0;
 let shake = 0;
 let objs = [], rivers = [], parts = [], banners = [];
 let genY = 0, nextRiverY = 0;
@@ -584,6 +597,7 @@ function getBest(k){ return Number(localStorage.getItem("f4wd_best_"+k)||0); }
 function resetWorld(attract){
   dist = 0; carX = roadCenter(0); carVX = 0;
   invT = turboT = knockT = 0; shake = 0;
+  rockHits = 0; forestT = 0;
   objs = []; rivers = []; parts = []; banners = [];
   genY = dist + (attract? 90 : 180);
   const rg = DIFFS[diffKey].riverGap;
@@ -704,9 +718,14 @@ function die(type){
   state="dying"; deathType=type; deathT=0;
   deathX=carX;
   stopEngine();
-  sfx(type==="hole"?"hole":"splash");
+  if(type==="hole") sfx("hole");
+  else if(type==="river") sfx("splash");
+  else if(type==="rock") sfx("crash");
+  else if(type==="forest") sfx("lost");
   shake = 4;
-  if(type==="river") puff(carX, VH*CAR_Y_RATIO, PAL.water2, 22, 55, .8, 3);
+  if(type==="river")  puff(carX, VH*CAR_Y_RATIO, PAL.water2, 22, 55, .8, 3);
+  if(type==="rock")   puff(carX, VH*CAR_Y_RATIO, "#bcbcbc", 22, 55, .8, 3);
+  if(type==="forest") puff(carX, VH*CAR_Y_RATIO, PAL.treeD, 22, 45, .8, 3);
 }
 function showOver(){
   state="over";
@@ -714,7 +733,11 @@ function showOver(){
   const prev = getBest(diffKey);
   bestBeaten = m > prev;
   if(bestBeaten) localStorage.setItem(bestKey(), m);
-  $("reasonText").textContent = deathType==="hole" ? "🕳 穴に落ちちゃった…" : "🌊 川にドボン…！";
+  $("reasonText").textContent =
+    deathType==="hole"   ? "🕳 穴に落ちちゃった…" :
+    deathType==="river"  ? "🌊 川にドボン…！" :
+    deathType==="rock"   ? "💥 岩に3回もぶつかった…" :
+                            "🌲 森で迷子になっちゃった…";
   $("finalDist").textContent = m;
   $("newRec").classList.toggle("hidden", !bestBeaten);
   $("overBest").textContent = `じこベスト（${DIFFS[diffKey].label}）: ${Math.max(m,prev)}m`;
@@ -768,6 +791,16 @@ function update(dt){
   speedNow = spd;
   dist += spd*dt;
 
+  /* --- 森に連続5秒以上いたらゲームオーバー（無敵中はカウントしない） --- */
+  if(offRoad){
+    if(invT<=0){
+      forestT += dt;
+      if(forestT >= 5){ die("forest"); return; }
+    }
+  }else{
+    forestT = 0;
+  }
+
   if(engineOsc) engineOsc.frequency.value = 55 + spd*0.42;
   if(engineGain && !muted) engineGain.gain.value = .03 + (turboT>0?.02:0);
 
@@ -796,7 +829,11 @@ function update(dt){
       if(Math.abs(dy)<o.r+8 && Math.abs(o.x-carX)<o.r+5){
         o.dead=true;
         if(inv||turboT>0){ sfx("smash"); puff(o.x,carY-dy,"#bcbcbc",12,42,.5,2); }
-        else { sfx("rock"); knockT=0.9; shake=3; puff(o.x,carY-dy,"#7c7c7c",8,30,.5,2); }
+        else {
+          sfx("rock"); knockT=0.9; shake=3; puff(o.x,carY-dy,"#7c7c7c",8,30,.5,2);
+          rockHits++;
+          if(rockHits>=3){ die("rock"); return; }
+        }
       }
     }else if(o.type==="star"){
       if(Math.abs(dy)<12 && Math.abs(o.x-carX)<11){
@@ -991,7 +1028,7 @@ function render(){
     const blink = invT>0 && Math.floor(now/(invT<1.5?60:110))%2===0;
     drawCar(Math.round(carX), carY, carVX>50?1:(carVX<-50?-1:0), blink, invT>0, turboT>0, now);
   }else if(state==="dying"){
-    if(deathType==="hole"){
+    if(deathType==="hole" || deathType==="rock"){
       // 段階的に縮んで落ちる（ドット絵らしくカクカクと）
       const stage = Math.min(4, Math.floor(deathT*4.3));
       const sc = [1,.75,.5,.3,.12][stage];
@@ -999,14 +1036,16 @@ function render(){
       const spr = (Math.floor(deathT*10)%2===0)? carSpr : flipCarCache();
       b.drawImage(spr, Math.round(deathX)-(w2>>1), carY-(h2>>1), w2, h2);
     }else{
-      // 川に沈む：下から水色で隠れていく
+      // 川 or 森：下（周囲）に沈む・埋もれていく
       const sink = Math.min(24, Math.round(deathT*26));
       const sx=Math.round(deathX)-8, sy2=carY-12;
       if(sink<24) b.drawImage(carSpr, 0,0,16,24-sink, sx,sy2,16,24-sink);
-      b.fillStyle=PAL.water2;
+      const lineColor = deathType==="forest" ? PAL.treeD : PAL.water2;
+      const foamColor = deathType==="forest" ? PAL.grassL : PAL.foam;
+      b.fillStyle=lineColor;
       b.fillRect(sx-2, sy2+24-sink-1, 20, 2);
       if(Math.floor(now/150)%2===0){
-        b.fillStyle=PAL.foam;
+        b.fillStyle=foamColor;
         b.fillRect(sx, sy2+24-sink-2, 2,1); b.fillRect(sx+13, sy2+24-sink-2, 2,1);
       }
     }
@@ -1041,7 +1080,21 @@ function render(){
 
     let gy2 = by0+bh2+10;
     if(invT>0){ drawGauge(W/2, gy2, invT/6, "#f8b800", "むてき！"); gy2+=20; }
-    if(turboT>0){ drawGauge(W/2, gy2, turboT/3, "#3cbcfc", "ターボ！"); }
+    if(turboT>0){ drawGauge(W/2, gy2, turboT/3, "#3cbcfc", "ターボ！"); gy2+=20; }
+    if(offRoad && forestT>0.3){
+      const warn = forestT>3.5 && Math.floor(now/150)%2===0;
+      drawGauge(W/2, gy2, forestT/5, warn?"#ff5040":"#e45c10", "森の中…！");
+      gy2 += 20;
+    }
+    if(rockHits>0){
+      ctx.textAlign="center";
+      ctx.font="900 13px sans-serif";
+      ctx.fillStyle = rockHits>=2 ? "#ff5040" : "#f8f8f8";
+      ctx.strokeStyle="#0a0a12"; ctx.lineWidth=4; ctx.lineJoin="round";
+      const rt = `🪨 ×${rockHits}/3`;
+      ctx.strokeText(rt, W/2, gy2+12);
+      ctx.fillText(rt, W/2, gy2+12);
+    }
 
     banners.forEach((bn,i)=>{
       const a = Math.min(1, bn.t/0.4);
