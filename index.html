@@ -564,7 +564,7 @@ function angleDelta(a, b){
 // 【実機調整用】操舵の向きが逆に感じたら ±1 を切り替えてください。
 // センサーの物理的な軸の向きは端末実機でしか確定できないため、
 // ここだけは動作確認しながらの微調整が必要です。
-const YAW_SIGN = 1;
+const YAW_SIGN = -1;
 
 let usingMotion = false; // devicemotionで検知できている間はtrue（deviceorientationへのフォールバックを止める）
 
