@@ -1,0 +1,1096 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<title>FOREST 4WD RUSH</title>
+<style>
+  :root{
+    --ink:#0a0a12; --paper:#f8f8f8; --sun:#f8b800; --red:#d82800;
+    --green:#00a844; --orange:#e45c10;
+  }
+  *{margin:0;padding:0;box-sizing:border-box;-webkit-tap-highlight-color:transparent;}
+  html,body{width:100%;height:100%;overflow:hidden;background:#0c2a16;
+    font-family:-apple-system,"Hiragino Maru Gothic ProN","Hiragino Sans","Yu Gothic",sans-serif;
+    touch-action:none;overscroll-behavior:none;-webkit-user-select:none;user-select:none;}
+  #cv{position:fixed;inset:0;display:block;image-rendering:pixelated;}
+
+  /* うっすらCRT走査線 */
+  #scan{position:fixed;inset:0;z-index:5;pointer-events:none;
+    background:repeating-linear-gradient(rgba(0,0,0,.10) 0 1px, transparent 1px 3px);}
+
+  .overlay{position:fixed;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;
+    gap:16px;z-index:10;background:rgba(4,8,20,.72);color:var(--paper);
+    padding:20px;text-align:center;}
+  .hidden{display:none!important;}
+
+  .logo{font-size:clamp(32px,6vw,60px);font-weight:900;letter-spacing:.04em;
+    color:var(--sun);text-shadow:3px 3px 0 var(--red),6px 6px 0 #000;line-height:1.1;}
+  .logo small{display:block;font-size:.30em;color:var(--paper);letter-spacing:.35em;margin-top:8px;
+    text-shadow:2px 2px 0 #000;}
+
+  /* ドラクエ風ウィンドウ */
+  .board{background:#0a0a12;border:3px solid var(--paper);outline:3px solid #0a0a12;
+    box-shadow:0 0 0 5px var(--paper) inset, 6px 6px 0 rgba(0,0,0,.55);
+    border-radius:2px;padding:18px 22px;max-width:580px;width:min(92vw,580px);}
+  .board h2{font-size:14px;color:var(--sun);margin-bottom:10px;letter-spacing:.3em;}
+  .rules{font-size:13.5px;line-height:2.0;text-align:left;color:var(--paper);}
+  .rules b{color:var(--sun);}
+
+  .diff-row{display:flex;gap:14px;flex-wrap:wrap;justify-content:center;}
+  button{font-family:inherit;cursor:pointer;border:none;}
+  .btn{font-size:18px;font-weight:800;color:#fff;padding:14px 26px;border-radius:2px;
+    background:#444;border:3px solid #0a0a12;
+    box-shadow:0 0 0 2px var(--paper) inset, 0 5px 0 #0a0a12;transition:transform .06s;}
+  .btn:active{transform:translateY(4px);box-shadow:0 0 0 2px var(--paper) inset,0 1px 0 #0a0a12;}
+  .btn .sub{display:block;font-size:11px;font-weight:600;color:#ffe9b8;margin-top:3px;}
+  .btn.easy{background:var(--green);}
+  .btn.normal{background:var(--orange);}
+  .btn.hard{background:var(--red);}
+  .btn.small{font-size:15px;padding:10px 20px;}
+
+  .best-line{font-size:13px;color:var(--sun);letter-spacing:.05em;text-shadow:2px 2px 0 #000;}
+
+  #overScreen .result-num{font-size:clamp(44px,9vw,84px);font-weight:900;color:var(--sun);
+    text-shadow:3px 3px 0 var(--red),6px 6px 0 #000;line-height:1;}
+  #overScreen .result-num span{font-size:.4em;color:var(--paper);}
+  .reason{font-size:17px;font-weight:700;color:#ff9c78;text-shadow:2px 2px 0 #000;}
+  .newrec{font-size:20px;font-weight:900;color:#58f898;text-shadow:2px 2px 0 #000;
+    animation:pop .5s steps(4);}
+  @keyframes pop{0%{transform:scale(.3)}70%{transform:scale(1.15)}100%{transform:scale(1)}}
+
+  #sysBtns{position:fixed;top:calc(8px + env(safe-area-inset-top));right:calc(10px + env(safe-area-inset-right));
+    z-index:20;display:flex;gap:8px;}
+  .sys{width:44px;height:44px;border-radius:2px;font-size:20px;color:#fff;
+    background:rgba(10,10,18,.75);border:2px solid var(--paper);}
+
+  #rotateHint{z-index:30;background:rgba(4,8,20,.94);font-size:20px;font-weight:800;line-height:2;}
+  #pauseScreen{background:rgba(4,8,20,.78);}
+  .tilt-note{font-size:12px;color:#b8d8b8;line-height:1.8;text-shadow:1px 1px 0 #000;}
+</style>
+</head>
+<body>
+<canvas id="cv"></canvas>
+<div id="scan"></div>
+
+<div id="sysBtns" class="hidden">
+  <button class="sys" id="muteBtn" title="サウンド">🔊</button>
+  <button class="sys" id="pauseBtn" title="ポーズ">⏸</button>
+</div>
+
+<!-- ===== タイトル ===== -->
+<div id="titleScreen" class="overlay">
+  <div class="logo">FOREST 4WD RUSH<small>もりの おくへ どこまでも</small></div>
+  <div class="board">
+    <h2>あそびかた</h2>
+    <div class="rules">
+      🚙 <b>iPadを左右にかたむけて</b>ハンドル操作（PCは ← → キー）／アクセルは全自動<br>
+      🕳 ギザギザの<b>穴</b>に落ちたらゲームオーバー ｜ 🌊 <b>川</b>は<b>橋</b>を渡らないとドボン<br>
+      ⭐ <b>スター</b>で一定時間むてき（点滅中は穴も川も通過OK）<br>
+      ⚡ <b>ターボ</b>で加速＆岩を粉砕 ｜ 🪨 岩・🟤 まるい<b>ぬかるみ</b>はスピードダウン<br>
+      🛣 道の外はガタガタで超スロー！ どこまで走れるかキョリで勝負！
+    </div>
+  </div>
+  <div class="diff-row">
+    <button class="btn easy"  data-diff="easy">らくらく<span class="sub">のんびりドライブ</span></button>
+    <button class="btn normal" data-diff="normal">ふつう<span class="sub">オフロード本番</span></button>
+    <button class="btn hard"  data-diff="hard">げきむず<span class="sub">ラリー選手級</span></button>
+  </div>
+  <div class="best-line" id="bestLine"></div>
+  <div class="tilt-note">※ スタートした瞬間の持ちかたが「まっすぐ」の基準になるよ（毎回自動調整）</div>
+</div>
+
+<!-- ===== ゲームオーバー ===== -->
+<div id="overScreen" class="overlay hidden">
+  <div class="reason" id="reasonText"></div>
+  <div class="result-num"><span id="finalDist">0</span><span> m</span></div>
+  <div class="newrec hidden" id="newRec">🏆 じこベスト更新！</div>
+  <div class="best-line" id="overBest"></div>
+  <div class="diff-row">
+    <button class="btn normal" id="retryBtn">もう一回！</button>
+    <button class="btn small" id="titleBtn">タイトルへ</button>
+    <button class="btn small hidden" id="shareBtn">きろくをシェア</button>
+  </div>
+</div>
+
+<!-- ===== ポーズ ===== -->
+<div id="pauseScreen" class="overlay hidden">
+  <div class="logo" style="font-size:34px;">ひとやすみ中</div>
+  <button class="btn normal" id="resumeBtn">つづける</button>
+</div>
+
+<!-- ===== 縦持ち警告 ===== -->
+<div id="rotateHint" class="overlay hidden">
+  📱 → 🔄 → 📱<br>iPadを<b style="color:var(--sun)">よこ持ち</b>にしてね！
+</div>
+
+<script>
+"use strict";
+/* =========================================================
+   FOREST 4WD RUSH v2 – Famicom-style pixel-art edition
+   低解像度バッファに整数座標で描画 → 拡大転送（本物のドット絵）
+   iPad: tilt steering / PC: arrow keys
+   ========================================================= */
+const cv = document.getElementById("cv");
+const ctx = cv.getContext("2d");
+let W = 0, H = 0, dpr = 1;
+let PIX = 4, VW = 320, VH = 180;         // 仮想解像度（ファミコン風）
+const bcv = document.createElement("canvas");
+const b = bcv.getContext("2d");
+
+function resize(){
+  dpr = Math.min(window.devicePixelRatio || 1, 2);
+  W = window.innerWidth; H = window.innerHeight;
+  cv.width = W * dpr; cv.height = H * dpr;
+  ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+  PIX = Math.max(2, Math.round(W / 320));
+  VW = Math.ceil(W / PIX); VH = Math.ceil(H / PIX);
+  bcv.width = VW; bcv.height = VH;
+  b.imageSmoothingEnabled = false;
+  ctx.imageSmoothingEnabled = false;
+}
+window.addEventListener("resize", resize);
+resize();
+
+/* ---------- utils ---------- */
+const clamp = (v,a,b_)=>Math.max(a,Math.min(b_,v));
+const rand  = (a,b_)=>a+Math.random()*(b_-a);
+function hash2(a,c){ const n=Math.sin(a*127.1+c*311.7)*43758.5453; return n-Math.floor(n); }
+
+const PX_PER_M = 4;                  // 仮想4px = 1m
+const CAR_Y_RATIO = 0.74;
+
+/* ---------- NESパレット風カラー ---------- */
+const PAL = {
+  grass1:"#1e6a2e", grass2:"#175c27", grassD:"#0c4a1e", grassL:"#3c8a3c",
+  dirt1:"#a07040", dirt2:"#946438", dirtD:"#6a4820", rut:"#7c5428",
+  treeD:"#0c4a1e", treeM:"#1e7a34", treeL:"#3c9c48", trunk:"#503000",
+  water1:"#0078f8", water2:"#3cbcfc", waterD:"#0048b8", foam:"#f8f8f8",
+  plank:"#a05e2c", plankD:"#7c4014", rail:"#3c2008",
+  mud:"#9c6a30", mudD:"#503000", mudM:"#855828", mudHi:"#c89858", mudBub:"#e8d0a0",
+  holeRim:"#5c3410", holeIn:"#000000", holeSoil:"#38200a", holeLit:"#4a2c10",
+};
+
+/* ---------- スプライト工房 ---------- */
+function mkSprite(rows, pal){
+  const h = rows.length, w = rows[0].length;
+  const c = document.createElement("canvas"); c.width=w; c.height=h;
+  const g = c.getContext("2d");
+  for(let y=0;y<h;y++) for(let x=0;x<w;x++){
+    const ch = rows[y][x];
+    if(ch==="." ) continue;
+    g.fillStyle = pal[ch]; g.fillRect(x,y,1,1);
+  }
+  return c;
+}
+function flipX(src){
+  const c=document.createElement("canvas"); c.width=src.width; c.height=src.height;
+  const g=c.getContext("2d"); g.translate(src.width,0); g.scale(-1,1); g.drawImage(src,0,0);
+  return c;
+}
+
+/* --- 車（16x24, 上向き） --- */
+const CAR_PAL = { Y:"#f8d848", R:"#d82800", r:"#7c1000", o:"#f87858",
+                  K:"#101010", k:"#383838", G:"#202020", g:"#484848",
+                  B:"#a4e4fc", b:"#3cbcfc" };
+const CAR_ROWS = [
+"..YY........YY..",
+".rRRRRRRRRRRRRr.",
+".RRoRRRRRRRRoRR.",
+"KKrRRRRRRRRRRrKK",
+"KKrRoRRRRRRoRrKK",
+"KKrRRRRRRRRRRrKK",
+"KKrRBBBBBBBBRrKK",
+"KKrRBbbbbbbBRrKK",
+"KKrRRRRRRRRRRrKK",
+".rRGGGGGGGGGGRr.",
+".rRGggggggggGRr.",
+".rRGGGGGGGGGGRr.",
+".rRGggggggggGRr.",
+".rRGGGGGGGGGGRr.",
+".rRGggggggggGRr.",
+".rRGGGGGGGGGGRr.",
+"KKrRGGGGGGGGRrKK",
+"KKrRRRRRRRRRRrKK",
+"KKrRRkKKKKkRRrKK",
+"KKrRRKKggKKRRrKK",
+"KKrRRKKggKKRRrKK",
+"KKrRRkKKKKkRRrKK",
+".rRRRRRRRRRRRRr.",
+"..rrrrrrrrrrrr..",
+];
+const carSpr = mkSprite(CAR_ROWS, CAR_PAL);
+/* 車体を斜めに見せるリーンフレーム（上1/3を横シフト） */
+function mkLean(dir){
+  const c=document.createElement("canvas"); c.width=18; c.height=24;
+  const g=c.getContext("2d"); g.imageSmoothingEnabled=false;
+  g.drawImage(carSpr, 0,0,16,8,  1+dir,0,16,8);   // フロント
+  g.drawImage(carSpr, 0,8,16,8,  1,8,16,8);       // 中央
+  g.drawImage(carSpr, 0,16,16,8, 1-dir,16,16,8);  // リア
+  return c;
+}
+const carLeanR = mkLean(1), carLeanL = mkLean(-1);
+
+/* --- 岩（12x10） --- */
+const rockSpr = mkSprite([
+"....lll.....",
+"..lllllg....",
+".lllllggg...",
+".llllgggggd.",
+"llllggggggd.",
+"lllgggggddd.",
+".ggggggdddd.",
+".gggdddddd..",
+"..dddddd....",
+"............",
+], { l:"#bcbcbc", g:"#7c7c7c", d:"#404040" });
+
+/* --- スター（11x9, 2フレーム） --- */
+const starA = mkSprite([
+".....Y.....",
+"....YYY....",
+"....YYY....",
+"YYYYYYYYYYY",
+".YYYYYYYYY.",
+"..YYYYYYY..",
+"..YYYYYYY..",
+".YYYY.YYYY.",
+".YY.....YY.",
+], { Y:"#f8b800" });
+const starB = mkSprite([
+".....Y.....",
+"....YYY....",
+"....YWY....",
+"YYYYWWWYYYY",
+".YYYYWYYYY.",
+"..YYYYYYY..",
+"..YYYYYYY..",
+".YYYY.YYYY.",
+".YY.....YY.",
+], { Y:"#f8d848", W:"#f8f8f8" });
+
+/* --- ターボ（8x13） --- */
+const boltSpr = mkSprite([
+"....CC..",
+"...CCC..",
+"...CC...",
+"..CCC...",
+".CCCCCC.",
+".CCCCC..",
+"...CC...",
+"..CCC...",
+"..CC....",
+".CCC....",
+".CC.....",
+".C......",
+"........",
+], { C:"#3cbcfc" });
+
+/* --- 注意看板（15x20） --- */
+const signSpr = mkSprite([
+".......Y.......",
+"......YYY......",
+"......YYY......",
+".....YYYYY.....",
+".....YYkYY.....",
+"....YYYkYYY....",
+"....YYYkYYY....",
+"...YYYYkYYYY...",
+"...YYYY.YYYY...",
+"..YYYYYkYYYYY..",
+"..YYYYYYYYYYY..",
+".YYYYYYYYYYYYY.",
+"kkkkkkkkkkkkkkk",
+"......ppp......",
+"......ppp......",
+"......ppp......",
+"......ppp......",
+"......ppp......",
+"......ppp......",
+"......ppp......",
+], { Y:"#f8b800", k:"#101010", p:"#503000" });
+
+/* --- 松の木（段々の三角・3種） --- */
+function mkPine(w, h){
+  const c=document.createElement("canvas"); c.width=w; c.height=h;
+  const g=c.getContext("2d");
+  const cx=(w/2)|0, ch=h-4;
+  const tiers=3, tierH=(ch/tiers)|0;
+  for(let t2=0;t2<tiers;t2++){
+    const y0=t2*tierH;
+    for(let y=0;y<tierH;y++){
+      const half = 1 + Math.round((y/(tierH-1)) * (w/2-1) * (0.55+0.45*(t2+1)/tiers));
+      const yy=y0+y;
+      g.fillStyle = PAL.treeM;
+      g.fillRect(cx-half, yy, half*2+1, 1);
+      g.fillStyle = PAL.treeL;                       // 左側ハイライト
+      g.fillRect(cx-half, yy, Math.max(1,(half*0.5)|0), 1);
+      g.fillStyle = PAL.treeD;                       // 右側シャドウ
+      g.fillRect(cx+Math.max(1,(half*0.4)|0), yy, half-Math.max(1,(half*0.4)|0)+1, 1);
+    }
+  }
+  g.fillStyle = PAL.trunk;
+  g.fillRect(cx-1, h-4, 3, 4);
+  return c;
+}
+const pines = [ mkPine(15,20), mkPine(11,15), mkPine(9,12) ];
+
+/* --- 切り株（8x6） --- */
+const stumpSpr = mkSprite([
+".pppppp.",
+"pLLLLLLp",
+"pLppppLp",
+"pppppppp",
+".pppppp.",
+"..pppp..",
+], { p:"#503000", L:"#a06428" });
+
+/* --- 水タイル（8x8, 2フレーム） --- */
+function mkWater(frame){
+  const c=document.createElement("canvas"); c.width=8; c.height=8;
+  const g=c.getContext("2d");
+  g.fillStyle=PAL.water1; g.fillRect(0,0,8,8);
+  g.fillStyle=PAL.water2;
+  if(frame===0){ g.fillRect(0,1,3,1); g.fillRect(5,4,3,1); g.fillRect(2,6,2,1); }
+  else         { g.fillRect(4,1,3,1); g.fillRect(0,4,3,1); g.fillRect(5,6,2,1); }
+  g.fillStyle=PAL.waterD;
+  if(frame===0){ g.fillRect(4,2,2,1); g.fillRect(1,5,2,1); }
+  else         { g.fillRect(1,2,2,1); g.fillRect(5,5,2,1); }
+  return c;
+}
+const waterTiles=[mkWater(0),mkWater(1)];
+
+/* =========================================================
+   ぬかるみ／穴 —— 形状で見分けるプロシージャルスプライト
+   穴　　＝ ギザギザ輪郭の黒い縦穴＋放射ひび割れ（危険！）
+   ぬかるみ＝ まるい泥だまり＋泡・ツヤ・飛び散り（減速のみ）
+   ========================================================= */
+function mkHoleSprite(rx, ry, seed){
+  const w=rx*2+10, h=ry*2+8;
+  const c=document.createElement("canvas"); c.width=w; c.height=h;
+  const g=c.getContext("2d");
+  const cx=(w/2)|0, cy=(h/2)|0;
+  const wid=[];
+  for(let y=-ry;y<=ry;y++){
+    const t=y/ry;
+    const base=rx*Math.sqrt(Math.max(0,1-t*t));
+    const j=Math.floor(hash2(seed,y+50)*5)-2;              // ギザギザ
+    wid[y+ry]=Math.max(2, Math.round(base+j));
+  }
+  // 土のリム（ギザギザ）
+  g.fillStyle=PAL.holeRim;
+  for(let y=-ry;y<=ry;y++){
+    const w0=wid[y+ry];
+    g.fillRect(cx-w0-2, cy+y, w0*2+5, 1);
+  }
+  // 黒い縦穴＋手前の内壁だけ光が当たる
+  for(let y=-ry;y<=ry;y++){
+    const w0=wid[y+ry];
+    if(y<=-ry+1)      g.fillStyle=PAL.holeSoil;   // 奥の縁は土色
+    else if(y>=ry-1)  g.fillStyle=PAL.holeLit;    // 手前の内壁
+    else              g.fillStyle=PAL.holeIn;     // 真っ黒
+    g.fillRect(cx-w0, cy+y, w0*2+1, 1);
+  }
+  // 放射状のひび割れ
+  g.fillStyle=PAL.holeRim;
+  const wMid=wid[ry];
+  g.fillRect(cx-wMid-6, cy, 4, 1);  g.fillRect(cx-wMid-5, cy-1, 1, 1);
+  g.fillRect(cx+wMid+3, cy-1, 4, 1); g.fillRect(cx+wMid+5, cy, 1, 1);
+  g.fillRect(cx-2, cy-ry-3, 1, 3);   g.fillRect(cx-3, cy-ry-2, 1, 1);
+  g.fillRect(cx+3, cy+ry+1, 1, 3);   g.fillRect(cx+4, cy+ry+2, 1, 1);
+  return c;
+}
+function mkMudSprite(rx, ry, seed){
+  const w=rx*2+10, h=ry*2+8;
+  const c=document.createElement("canvas"); c.width=w; c.height=h;
+  const g=c.getContext("2d");
+  const cx=(w/2)|0, cy=(h/2)|0;
+  // まるい泥だまり（波打つ滑らかな輪郭）
+  for(let y=-ry;y<=ry;y++){
+    const t=y/ry;
+    const base=rx*Math.sqrt(Math.max(0,1-t*t));
+    const w0=Math.max(2, Math.round(base*(0.92+0.10*Math.sin(y*0.8+seed*7))));
+    g.fillStyle=PAL.mudD;
+    g.fillRect(cx-w0-1, cy+y, w0*2+3, 1);          // 濃い縁どり
+    g.fillStyle = (y%2===0)? PAL.mud : PAL.mudM;   // 縞々の泥
+    g.fillRect(cx-w0, cy+y, w0*2+1, 1);
+  }
+  // ツヤ（左上のハイライト帯）
+  g.fillStyle=PAL.mudHi;
+  const hw=(rx*0.5)|0;
+  g.fillRect(cx-hw-2, cy-((ry*0.45)|0), hw, 1);
+  g.fillRect(cx-hw,   cy-((ry*0.45)|0)+1, (hw*0.6)|0, 1);
+  // 泡（2〜3個）
+  for(let i2=0;i2<3;i2++){
+    if(hash2(seed,i2+9)<0.3 && i2>0) continue;
+    const bx=cx+Math.round((hash2(seed,i2)*2-1)*rx*0.5);
+    const by=cy+Math.round((hash2(seed,i2+3)*2-1)*ry*0.5);
+    g.fillStyle=PAL.mudBub;
+    g.fillRect(bx-1,by,3,1); g.fillRect(bx,by-1,1,3);
+    g.fillStyle=PAL.mudD; g.fillRect(bx,by,1,1);
+  }
+  // まわりの飛び散り
+  g.fillStyle=PAL.mudM;
+  for(let i2=0;i2<6;i2++){
+    const a=hash2(seed,i2+20)*Math.PI*2;
+    const dx2=Math.round(Math.cos(a)*(rx+2+hash2(seed,i2+30)*3));
+    const dy2=Math.round(Math.sin(a)*(ry+2+hash2(seed,i2+40)*2));
+    g.fillRect(cx+dx2, cy+dy2, 1+((i2%2)|0), 1);
+  }
+  return c;
+}
+
+/* ---------- difficulty（仮想px単位） ---------- */
+const DIFFS = {
+  easy:   { label:"らくらく", base:86,  holeW:.24, step:[51,86],  riverGap:[428,628] },
+  normal: { label:"ふつう",   base:108, holeW:.30, step:[43,71],  riverGap:[343,543] },
+  hard:   { label:"げきむず", base:134, holeW:.37, step:[36,59],  riverGap:[286,457] },
+};
+let diffKey = "normal";
+
+/* ---------- audio ---------- */
+let AC=null, master=null, engineOsc=null, engineGain=null, muted=false;
+function initAudio(){
+  if(AC) return;
+  try{
+    AC = new (window.AudioContext||window.webkitAudioContext)();
+    master = AC.createGain(); master.gain.value = muted?0:1; master.connect(AC.destination);
+  }catch(e){ AC=null; }
+}
+function beep(freq,dur,type="square",vol=.15,slide=0){
+  if(!AC||muted) return;
+  const o=AC.createOscillator(), g=AC.createGain();
+  o.type=type; o.frequency.value=freq;
+  if(slide) o.frequency.linearRampToValueAtTime(freq+slide, AC.currentTime+dur);
+  g.gain.setValueAtTime(vol,AC.currentTime);
+  g.gain.exponentialRampToValueAtTime(.001,AC.currentTime+dur);
+  o.connect(g); g.connect(master); o.start(); o.stop(AC.currentTime+dur);
+}
+function noiseBurst(dur,vol=.3,low=false){
+  if(!AC||muted) return;
+  const len=AC.sampleRate*dur, buf=AC.createBuffer(1,len,AC.sampleRate), d=buf.getChannelData(0);
+  for(let i=0;i<len;i++) d[i]=(Math.random()*2-1)*(1-i/len);
+  const s=AC.createBufferSource(); s.buffer=buf;
+  const g=AC.createGain(); g.gain.value=vol;
+  if(low){ const f=AC.createBiquadFilter(); f.type="lowpass"; f.frequency.value=500; s.connect(f); f.connect(g); }
+  else s.connect(g);
+  g.connect(master); s.start();
+}
+function sfx(name){
+  switch(name){
+    case "pickup": beep(880,.09,"square",.12); setTimeout(()=>beep(1320,.12,"square",.12),70); break;
+    case "turbo":  beep(300,.35,"sawtooth",.14,600); break;
+    case "rock":   noiseBurst(.18,.35,true); break;
+    case "smash":  noiseBurst(.12,.25); beep(160,.15,"square",.15); break;
+    case "hole":   beep(400,.5,"square",.18,-320); break;
+    case "splash": noiseBurst(.5,.3,true); beep(220,.4,"triangle",.1,-120); break;
+    case "mile":   beep(660,.1,"square",.14); setTimeout(()=>beep(990,.18,"square",.14),90); break;
+  }
+}
+function startEngine(){
+  if(!AC||engineOsc) return;
+  engineOsc=AC.createOscillator(); engineOsc.type="sawtooth";
+  const f=AC.createBiquadFilter(); f.type="lowpass"; f.frequency.value=320;
+  engineGain=AC.createGain(); engineGain.gain.value=.035;
+  engineOsc.connect(f); f.connect(engineGain); engineGain.connect(master);
+  engineOsc.start();
+}
+function stopEngine(){ if(engineOsc){ try{engineOsc.stop();}catch(e){} engineOsc=null; } }
+
+/* ---------- input ---------- */
+const keys = {};
+window.addEventListener("keydown", e=>{ keys[e.key]=true; if(e.key.startsWith("Arrow")) e.preventDefault(); });
+window.addEventListener("keyup",   e=>{ keys[e.key]=false; });
+
+let tiltRaw = 0, tiltNeutral = null, tiltAvailable = false;
+function onOrient(e){
+  if(e.beta===null && e.gamma===null) return;
+  tiltAvailable = true;
+  const ang = (screen.orientation && screen.orientation.angle!==undefined)
+              ? screen.orientation.angle : (window.orientation||0);
+  let t;
+  if(ang===90)                 t =  e.beta;
+  else if(ang===-90||ang===270)t = -e.beta;
+  else                         t =  e.gamma;
+  tiltRaw = t||0;
+  if(tiltNeutral===null) tiltNeutral = tiltRaw;
+}
+window.addEventListener("deviceorientation", onOrient);
+
+async function requestTiltPermission(){
+  if(typeof DeviceOrientationEvent!=="undefined" &&
+     typeof DeviceOrientationEvent.requestPermission==="function"){
+    try{ await DeviceOrientationEvent.requestPermission(); }catch(e){}
+  }
+}
+function currentSteer(){
+  let s = 0;
+  if(tiltAvailable && tiltNeutral!==null) s = clamp((tiltRaw-tiltNeutral)/20, -1, 1);
+  if(keys["ArrowLeft"])  s = -1;
+  if(keys["ArrowRight"]) s =  1;
+  if(keys["ArrowLeft"]&&keys["ArrowRight"]) s = 0;
+  return s;
+}
+
+/* ---------- world / road（道幅は旧版の1.5倍） ---------- */
+function roadCenter(wy){
+  return VW*(0.5 + 0.18*Math.sin(wy*0.0038) + 0.09*Math.sin(wy*0.0013+1.7));
+}
+function roadHalf(){ return Math.max(46, Math.round(VW*0.19)); }
+
+/* ---------- game state ---------- */
+let state = "title";
+let dist = 0;
+let carX = 0, carVX = 0;
+let invT = 0, turboT = 0, knockT = 0, mudOn = false, offRoad = false;
+let shake = 0;
+let objs = [], rivers = [], parts = [], banners = [];
+let genY = 0, nextRiverY = 0;
+let nextMilestone = 500;
+let deathType = "", deathT = 0, deathX = 0;
+let bestBeaten = false;
+let speedNow = 0;
+
+function bestKey(){ return "f4wd_best_"+diffKey; }
+function getBest(k){ return Number(localStorage.getItem("f4wd_best_"+k)||0); }
+
+function resetWorld(attract){
+  dist = 0; carX = roadCenter(0); carVX = 0;
+  invT = turboT = knockT = 0; shake = 0;
+  objs = []; rivers = []; parts = []; banners = [];
+  genY = dist + (attract? 90 : 180);
+  const rg = DIFFS[diffKey].riverGap;
+  nextRiverY = dist + rand(rg[0], rg[1]);
+  nextMilestone = 500; deathT = 0; bestBeaten = false;
+}
+
+/* ---------- spawning ---------- */
+let objSeed = 1;
+function spawnAhead(){
+  const D = DIFFS[diffKey];
+  const meters = dist/PX_PER_M;
+  const densBoost = clamp(1 - meters/6000*0.3, 0.7, 1);
+  const limit = dist + VH*CAR_Y_RATIO + 120;
+
+  while(genY < limit){
+    genY += rand(D.step[0], D.step[1]) * densBoost;
+
+    if(genY >= nextRiverY){
+      const wy = nextRiverY;
+      const c  = roadCenter(wy);
+      rivers.push({ wy, h:26, bx:Math.round(c), bw:66 });
+      objs.push({ type:"sign", x: clamp(Math.round(c + roadHalf()+16), 12, VW-12), wy: wy-100 });
+      const rg = D.riverGap;
+      nextRiverY += rand(rg[0], rg[1]);
+      genY = wy + 78;
+      continue;
+    }
+    let nearRiver = false;
+    for(const r of rivers) if(Math.abs(genY - r.wy) < 70) nearRiver = true;
+    if(Math.abs(genY - nextRiverY) < 70) nearRiver = true;
+    if(nearRiver) continue;
+
+    const c = roadCenter(genY), half = roadHalf();
+    const rx = Math.round(c + rand(-(half-14), half-14));
+    const roll = Math.random();
+    let t = null;
+    objSeed++;
+    if(roll < D.holeW){
+      const hrx=Math.round(rand(10,14)), hry=Math.round(rand(7,9));
+      t = {type:"hole", x:rx, wy:genY, rx:hrx, ry:hry, spr:mkHoleSprite(hrx,hry,objSeed)};
+    }else if(roll < D.holeW+.20){
+      t = {type:"rock", x:rx, wy:genY, r:Math.round(rand(5,7))};
+    }else if(roll < D.holeW+.33){
+      const mrx=Math.round(rand(16,25)), mry=Math.round(rand(10,14));
+      t = {type:"mud", x:rx, wy:genY, rx:mrx, ry:mry, spr:mkMudSprite(mrx,mry,objSeed)};
+    }else if(roll < D.holeW+.375)  t = {type:"star", x:rx, wy:genY, r:6};
+    else if(roll < D.holeW+.435)   t = {type:"bolt", x:rx, wy:genY, r:6};
+    if(t) objs.push(t);
+  }
+  objs   = objs.filter(o => o.wy > dist-96 && !o.dead);
+  rivers = rivers.filter(r => r.wy > dist-96);
+}
+
+/* ---------- particles（ドット四角） ---------- */
+function puff(x,y,color,n=6,spd=18,life=.5,r=2){
+  for(let i=0;i<n;i++){
+    const a = rand(0,Math.PI*2), v = rand(spd*.3,spd);
+    parts.push({x,y,vx:Math.cos(a)*v,vy:Math.sin(a)*v,life,maxLife:life,r:Math.max(1,Math.round(rand(r*.5,r))),color});
+  }
+}
+
+/* ---------- game flow ---------- */
+const $ = id=>document.getElementById(id);
+const titleScreen=$("titleScreen"), overScreen=$("overScreen"), pauseScreen=$("pauseScreen"),
+      rotateHint=$("rotateHint"), sysBtns=$("sysBtns");
+
+function updateBestLine(){
+  $("bestLine").textContent =
+    `🏆 じこベスト　らくらく ${getBest("easy")}m ／ ふつう ${getBest("normal")}m ／ げきむず ${getBest("hard")}m`;
+}
+updateBestLine();
+
+async function startGame(dk){
+  diffKey = dk;
+  initAudio();
+  await requestTiltPermission();
+  tiltNeutral = tiltAvailable ? tiltRaw : null;
+  resetWorld(false);
+  titleScreen.classList.add("hidden");
+  overScreen.classList.add("hidden");
+  sysBtns.classList.remove("hidden");
+  state = "play";
+  startEngine();
+  sfx("turbo");
+}
+
+document.querySelectorAll("[data-diff]").forEach(btn=>{
+  btn.addEventListener("click", ()=>startGame(btn.dataset.diff));
+});
+$("retryBtn").addEventListener("click", ()=>startGame(diffKey));
+$("titleBtn").addEventListener("click", ()=>{
+  overScreen.classList.add("hidden"); sysBtns.classList.add("hidden");
+  updateBestLine(); titleScreen.classList.remove("hidden");
+  resetWorld(true); state="title";
+});
+if(navigator.share){
+  $("shareBtn").classList.remove("hidden");
+  $("shareBtn").addEventListener("click", ()=>{
+    const m = Math.floor(dist/PX_PER_M);
+    navigator.share({ text:`FOREST 4WD RUSH（${DIFFS[diffKey].label}）で ${m}m 走破！🚙🌲` }).catch(()=>{});
+  });
+}
+
+$("pauseBtn").addEventListener("click", ()=>{ if(state==="play") pauseGame(); });
+$("resumeBtn").addEventListener("click", resumeGame);
+function pauseGame(){ state="pause"; pauseScreen.classList.remove("hidden"); if(engineGain) engineGain.gain.value=0; }
+function resumeGame(){ if(state!=="pause")return; state="play"; pauseScreen.classList.add("hidden"); if(engineGain) engineGain.gain.value=.035; lastT=performance.now(); }
+document.addEventListener("visibilitychange", ()=>{ if(document.hidden && state==="play") pauseGame(); });
+
+$("muteBtn").addEventListener("click", ()=>{
+  muted=!muted;
+  $("muteBtn").textContent = muted ? "🔇" : "🔊";
+  if(master) master.gain.value = muted?0:1;
+});
+
+function die(type){
+  state="dying"; deathType=type; deathT=0;
+  deathX=carX;
+  stopEngine();
+  sfx(type==="hole"?"hole":"splash");
+  shake = 4;
+  if(type==="river") puff(carX, VH*CAR_Y_RATIO, PAL.water2, 22, 55, .8, 3);
+}
+function showOver(){
+  state="over";
+  const m = Math.floor(dist/PX_PER_M);
+  const prev = getBest(diffKey);
+  bestBeaten = m > prev;
+  if(bestBeaten) localStorage.setItem(bestKey(), m);
+  $("reasonText").textContent = deathType==="hole" ? "🕳 穴に落ちちゃった…" : "🌊 川にドボン…！";
+  $("finalDist").textContent = m;
+  $("newRec").classList.toggle("hidden", !bestBeaten);
+  $("overBest").textContent = `じこベスト（${DIFFS[diffKey].label}）: ${Math.max(m,prev)}m`;
+  overScreen.classList.remove("hidden");
+  sysBtns.classList.add("hidden");
+  if(bestBeaten) sfx("mile");
+}
+
+/* ---------- update ---------- */
+function update(dt){
+  const D = DIFFS[diffKey];
+  const carY = VH*CAR_Y_RATIO;
+
+  if(state==="title"){
+    dist += 34*dt;
+    carX += (roadCenter(dist)-carX)*dt*2;
+    spawnAhead();
+    stepParticles(dt);
+    return;
+  }
+  if(state==="dying"){
+    deathT += dt;
+    shake = Math.max(0, shake-dt*12);
+    stepParticles(dt);
+    if(deathT>1.15) showOver();
+    return;
+  }
+  if(state!=="play") return;
+
+  /* --- steering --- */
+  const steer = currentSteer();
+  const targetVX = steer*134;
+  carVX += (targetVX-carVX)*Math.min(1,dt*8);
+  carX = clamp(carX + carVX*dt, 10, VW-10);
+
+  /* --- speed --- */
+  const meters = dist/PX_PER_M;
+  let spd = D.base + Math.min(meters,2500)*0.0157;
+  const c = roadCenter(dist), half = roadHalf();
+  offRoad = Math.abs(carX-c) > half-4;
+  mudOn = false;
+  for(const o of objs){
+    if(o.type==="mud" && !o.dead &&
+       Math.abs(o.wy-dist)<o.ry+7 && Math.abs(o.x-carX)<o.rx+4){ mudOn=true; break; }
+  }
+  if(knockT>0){ knockT-=dt; spd*=0.45; }
+  if(mudOn && turboT<=0)   spd*=0.55;
+  if(offRoad)              spd*=0.5;
+  if(turboT>0){ turboT-=dt; spd*=1.65; }
+  if(invT>0) invT-=dt;
+  speedNow = spd;
+  dist += spd*dt;
+
+  if(engineOsc) engineOsc.frequency.value = 55 + spd*0.42;
+  if(engineGain && !muted) engineGain.gain.value = .03 + (turboT>0?.02:0);
+
+  /* --- dust --- */
+  if(Math.random()<dt*40){
+    const col = offRoad? PAL.grassD : (mudOn? PAL.mudD : "#c8a060");
+    puff(carX+rand(-4,4), carY+11, col, 1, 12, .45, 2);
+  }
+  if(turboT>0 && Math.random()<dt*60) puff(carX+rand(-3,3), carY+13, "#f8b800", 1, 26, .3, 2);
+  if(offRoad) shake = Math.max(shake, 0.9);
+  shake = Math.max(0, shake-dt*9);
+
+  spawnAhead();
+
+  /* --- collisions --- */
+  const inv = invT>0;
+  for(const o of objs){
+    if(o.dead) continue;
+    const dy = o.wy - dist;
+    if(o.type==="hole"){
+      if(Math.abs(dy)<o.ry+4 && Math.abs(o.x-carX)<o.rx*0.75){
+        if(inv){ if(!o.passed){o.passed=true; puff(o.x,carY-dy,"#c8a060",5,18,.4);} }
+        else { die("hole"); return; }
+      }
+    }else if(o.type==="rock"){
+      if(Math.abs(dy)<o.r+8 && Math.abs(o.x-carX)<o.r+5){
+        o.dead=true;
+        if(inv||turboT>0){ sfx("smash"); puff(o.x,carY-dy,"#bcbcbc",12,42,.5,2); }
+        else { sfx("rock"); knockT=0.9; shake=3; puff(o.x,carY-dy,"#7c7c7c",8,30,.5,2); }
+      }
+    }else if(o.type==="star"){
+      if(Math.abs(dy)<12 && Math.abs(o.x-carX)<11){
+        o.dead=true; invT=6; sfx("pickup");
+        puff(o.x,carY-dy,"#f8d848",14,45,.6,2);
+      }
+    }else if(o.type==="bolt"){
+      if(Math.abs(dy)<12 && Math.abs(o.x-carX)<11){
+        o.dead=true; turboT=3; sfx("turbo");
+        puff(o.x,carY-dy,"#3cbcfc",12,45,.6,2);
+      }
+    }
+  }
+  for(const r of rivers){
+    if(dist+7 > r.wy && dist-7 < r.wy+r.h){
+      const onBridge = Math.abs(carX-r.bx) < r.bw/2 - 5;
+      if(!onBridge){
+        if(inv){ if(!r.passed){r.passed=true; puff(carX,carY,PAL.water2,8,36,.5,2);} }
+        else { die("river"); return; }
+      }
+    }
+  }
+
+  /* --- milestones --- */
+  if(meters >= nextMilestone){
+    banners.push({text:`${nextMilestone}m 突破！`, t:1.8});
+    sfx("mile");
+    nextMilestone += 500;
+  }
+  const prevBest = getBest(diffKey);
+  if(!bestBeaten && prevBest>0 && meters>prevBest){
+    bestBeaten = true;
+    banners.push({text:"🏆 じこベスト更新中！", t:2.2});
+    sfx("mile");
+  }
+
+  stepParticles(dt);
+  for(const bn of banners) bn.t -= dt;
+  banners = banners.filter(bn=>bn.t>0);
+}
+function stepParticles(dt){
+  for(const p of parts){
+    p.x+=p.vx*dt; p.y+=p.vy*dt; p.vy+=18*dt; p.life-=dt;
+  }
+  parts = parts.filter(p=>p.life>0);
+}
+
+/* ---------- render（すべて仮想バッファに整数座標で） ---------- */
+function wyToSy(wy){ return Math.round(VH*CAR_Y_RATIO - (wy - dist)); }
+
+function render(){
+  const carY = Math.round(VH*CAR_Y_RATIO);
+  const now = performance.now();
+
+  /* ===== 地面＋道（2px帯のドット絵）===== */
+  const STEP=2;
+  for(let y=0; y<VH+STEP; y+=STEP){
+    const wy = dist + (carY - y);
+    const band = Math.floor(wy/STEP);
+    // 草地（2色ディザ）
+    b.fillStyle = (band%2===0) ? PAL.grass1 : PAL.grass2;
+    b.fillRect(0,y,VW,STEP);
+    // 草むらの点
+    if(hash2(band,3)<0.30){
+      const gx=Math.floor(hash2(band,4)*VW);
+      b.fillStyle = hash2(band,5)<0.5 ? PAL.grassL : PAL.grassD;
+      b.fillRect(gx,y,2,1);
+    }
+    const c = Math.round(roadCenter(wy)), half = roadHalf();
+    // 路肩の濃い草
+    b.fillStyle = PAL.grassD;
+    b.fillRect(c-half-3,y,3,STEP);
+    b.fillRect(c+half,y,3,STEP);
+    // ダート路面（2色）
+    b.fillStyle = (band%2===0) ? PAL.dirt1 : PAL.dirt2;
+    b.fillRect(c-half,y,half*2,STEP);
+    // 小石・砂の点
+    if(hash2(band,7)<0.4){
+      const sx=c-half+2+Math.floor(hash2(band,8)*(half*2-4));
+      b.fillStyle=PAL.dirtD;
+      b.fillRect(sx,y+ (band%2),1,1);
+    }
+    // わだち（点線）
+    if(band%3!==0){
+      b.fillStyle=PAL.rut;
+      b.fillRect(c-Math.round(half*0.45)-2,y,4,STEP);
+      b.fillRect(c+Math.round(half*0.45)-2,y,4,STEP);
+    }
+  }
+
+  /* ===== 松の木（決定論的配置）===== */
+  const CELL=20;
+  const wyTop = dist + carY - VH - CELL, wyBot = dist + carY + CELL;
+  for(let gy=Math.floor(wyTop/CELL); gy<=Math.floor(wyBot/CELL); gy++){
+    const rowWy = gy*CELL;
+    const sy = wyToSy(rowWy);
+    const c = roadCenter(rowWy), half = roadHalf();
+    for(let gx=0; gx<=Math.ceil(VW/CELL); gx++){
+      const h1 = hash2(gx,gy);
+      if(h1>0.55) continue;
+      const x = Math.round(gx*CELL + hash2(gx+9,gy)*CELL);
+      if(Math.abs(x-c) < half+12) continue;
+      const yy = sy + Math.round(hash2(gx+3,gy)*CELL);
+      if(h1<0.08){ b.drawImage(stumpSpr, x-4, yy-3); continue; }
+      const spr = pines[Math.floor(hash2(gx,gy+5)*3)];
+      b.drawImage(spr, x-(spr.width>>1), yy-spr.height+3);
+    }
+  }
+
+  /* ===== ぬかるみ ===== */
+  for(const o of objs){
+    if(o.type!=="mud"||o.dead) continue;
+    const sy = wyToSy(o.wy); if(sy<-40||sy>VH+40) continue;
+    b.drawImage(o.spr, o.x-(o.spr.width>>1), sy-(o.spr.height>>1));
+  }
+  /* ===== 穴 ===== */
+  for(const o of objs){
+    if(o.type!=="hole"||o.dead) continue;
+    const sy = wyToSy(o.wy); if(sy<-40||sy>VH+40) continue;
+    b.drawImage(o.spr, o.x-(o.spr.width>>1), sy-(o.spr.height>>1));
+  }
+
+  /* ===== 川＋橋 ===== */
+  const wf = Math.floor(now/300)%2;
+  const scroll = Math.floor(now/120)%8;
+  for(const r of rivers){
+    const syBot = wyToSy(r.wy), syTop = wyToSy(r.wy+r.h);
+    if(syTop>VH+60||syBot<-60) continue;
+    const top = Math.min(syTop,syBot), hh = Math.abs(syBot-syTop);
+    // 土手
+    b.fillStyle=PAL.dirtD;
+    b.fillRect(0,top-2,VW,2); b.fillRect(0,top+hh,VW,2);
+    // 水タイル
+    const tile=waterTiles[wf];
+    for(let ty=top; ty<top+hh; ty+=8){
+      const th=Math.min(8, top+hh-ty);
+      for(let tx=-8+scroll; tx<VW; tx+=8){
+        b.drawImage(tile, 0,0,8,th, tx,ty,8,th);
+      }
+    }
+    // 白い水しぶき（岸）
+    b.fillStyle=PAL.foam;
+    for(let fx=(scroll*2)%12; fx<VW; fx+=12){
+      b.fillRect(fx,top,3,1); b.fillRect(fx+6,top+hh-1,3,1);
+    }
+    // 橋（板張り＋手すり）
+    const bx=r.bx, bw=r.bw, bl=Math.round(bx-bw/2);
+    for(let py=top-3; py<top+hh+3; py+=4){
+      b.fillStyle = (Math.floor(py/4)%2===0)? PAL.plank : PAL.plankD;
+      b.fillRect(bl+2, py, bw-4, 4);
+      b.fillStyle=PAL.rail;
+      b.fillRect(bl+2, py, bw-4, 1);
+    }
+    b.fillStyle=PAL.rail;
+    b.fillRect(bl, top-4, 3, hh+8);
+    b.fillRect(bl+bw-3, top-4, 3, hh+8);
+    b.fillStyle=PAL.plank;
+    b.fillRect(bl+1, top-4, 1, hh+8);
+    b.fillRect(bl+bw-2, top-4, 1, hh+8);
+  }
+
+  /* ===== 看板・岩・アイテム ===== */
+  const starF = Math.floor(now/220)%2;
+  for(const o of objs){
+    if(o.dead) continue;
+    const sy = wyToSy(o.wy); if(sy<-40||sy>VH+40) continue;
+    if(o.type==="sign"){
+      b.drawImage(signSpr, o.x-7, sy-18);
+    }else if(o.type==="rock"){
+      b.fillStyle="rgba(0,0,0,.3)";
+      b.fillRect(o.x-6, sy+3, 12, 2);
+      b.drawImage(rockSpr, o.x-6, sy-6);
+    }else if(o.type==="star"){
+      const bob = Math.round(Math.sin(now/200 + o.x)*2);
+      b.drawImage(starF? starB : starA, o.x-5, sy-4+bob);
+    }else if(o.type==="bolt"){
+      const bob = Math.round(Math.sin(now/180 + o.x)*2);
+      b.drawImage(boltSpr, o.x-4, sy-6+bob);
+    }
+  }
+
+  /* ===== particles ===== */
+  for(const p of parts){
+    b.globalAlpha = Math.max(0, p.life/p.maxLife) > 0.4 ? 1 : 0.6;
+    b.fillStyle = p.color;
+    b.fillRect(Math.round(p.x), Math.round(p.y), p.r, p.r);
+  }
+  b.globalAlpha = 1;
+
+  /* ===== 車 ===== */
+  if(state==="play"||state==="pause"){
+    const blink = invT>0 && Math.floor(now/(invT<1.5?60:110))%2===0;
+    drawCar(Math.round(carX), carY, carVX>50?1:(carVX<-50?-1:0), blink, invT>0, turboT>0, now);
+  }else if(state==="dying"){
+    if(deathType==="hole"){
+      // 段階的に縮んで落ちる（ドット絵らしくカクカクと）
+      const stage = Math.min(4, Math.floor(deathT*4.3));
+      const sc = [1,.75,.5,.3,.12][stage];
+      const w2=Math.max(2,Math.round(16*sc)), h2=Math.max(2,Math.round(24*sc));
+      const spr = (Math.floor(deathT*10)%2===0)? carSpr : flipCarCache();
+      b.drawImage(spr, Math.round(deathX)-(w2>>1), carY-(h2>>1), w2, h2);
+    }else{
+      // 川に沈む：下から水色で隠れていく
+      const sink = Math.min(24, Math.round(deathT*26));
+      const sx=Math.round(deathX)-8, sy2=carY-12;
+      if(sink<24) b.drawImage(carSpr, 0,0,16,24-sink, sx,sy2,16,24-sink);
+      b.fillStyle=PAL.water2;
+      b.fillRect(sx-2, sy2+24-sink-1, 20, 2);
+      if(Math.floor(now/150)%2===0){
+        b.fillStyle=PAL.foam;
+        b.fillRect(sx, sy2+24-sink-2, 2,1); b.fillRect(sx+13, sy2+24-sink-2, 2,1);
+      }
+    }
+  }
+
+  /* ===== 仮想バッファ → 実画面へ拡大転送 ===== */
+  ctx.setTransform(dpr,0,0,dpr,0,0);
+  ctx.fillStyle="#0c2a16";
+  ctx.fillRect(0,0,W,H);
+  ctx.imageSmoothingEnabled=false;
+  const shX = shake>0 ? Math.round(rand(-shake,shake))*PIX : 0;
+  const shY = shake>0 ? Math.round(rand(-shake,shake))*PIX : 0;
+  ctx.drawImage(bcv, 0,0,VW,VH, shX,shY, VW*PIX, VH*PIX);
+
+  /* ===== HUD（実画面・角ばったファミコン窓）===== */
+  if(state==="play"||state==="dying"||state==="pause"){
+    const m = Math.floor(dist/PX_PER_M);
+    ctx.textAlign="center";
+    const bw2 = 214, bh2 = 58, bx0 = (W-bw2)/2, by0 = 10;
+    ctx.fillStyle="#0a0a12";
+    ctx.fillRect(bx0,by0,bw2,bh2);
+    ctx.strokeStyle="#f8f8f8"; ctx.lineWidth=3;
+    ctx.strokeRect(bx0+3,by0+3,bw2-6,bh2-6);
+    ctx.fillStyle="#f8b800";
+    ctx.font="900 32px -apple-system,sans-serif";
+    ctx.fillText(m.toLocaleString()+" m", W/2, by0+36);
+    ctx.fillStyle="#f8f8f8"; ctx.font="700 12px sans-serif";
+    ctx.fillText(Math.round(speedNow/PX_PER_M*3.6)+" km/h ／ "+DIFFS[diffKey].label, W/2, by0+52);
+
+    let gy2 = by0+bh2+10;
+    if(invT>0){ drawGauge(W/2, gy2, invT/6, "#f8b800", "むてき！"); gy2+=20; }
+    if(turboT>0){ drawGauge(W/2, gy2, turboT/3, "#3cbcfc", "ターボ！"); }
+
+    banners.forEach((bn,i)=>{
+      const a = Math.min(1, bn.t/0.4);
+      ctx.globalAlpha = a;
+      ctx.font="900 38px -apple-system,sans-serif";
+      ctx.fillStyle="#f8f8f8";
+      ctx.strokeStyle="#0a0a12"; ctx.lineWidth=8; ctx.lineJoin="round";
+      const yy = H*0.32 + i*52;
+      ctx.strokeText(bn.text, W/2, yy);
+      ctx.fillText(bn.text, W/2, yy);
+      ctx.globalAlpha = 1;
+    });
+  }
+}
+let _flipCar=null;
+function flipCarCache(){ if(!_flipCar) _flipCar=flipX(carSpr); return _flipCar; }
+
+function drawGauge(cx,y,ratio,color,label){
+  const w=150;
+  ctx.fillStyle="#0a0a12"; ctx.fillRect(cx-w/2,y,w,12);
+  ctx.strokeStyle="#f8f8f8"; ctx.lineWidth=2; ctx.strokeRect(cx-w/2+1,y+1,w-2,10);
+  ctx.fillStyle=color; ctx.fillRect(cx-w/2+3,y+3,(w-6)*clamp(ratio,0,1),6);
+  ctx.fillStyle=color; ctx.font="900 12px sans-serif"; ctx.textAlign="left";
+  ctx.fillText(label, cx+w/2+8, y+11);
+  ctx.textAlign="center";
+}
+
+function drawCar(x,y,lean,blink,inv,turbo,now){
+  if(inv){
+    // 点線のドットリング（色はNES風に切替）
+    const cols=["#f8b800","#d82800","#3cbcfc","#00a844"];
+    b.fillStyle = cols[Math.floor(now/120)%4];
+    const rr = 16 + Math.round(Math.sin(now/90)*1);
+    for(let i=0;i<16;i++){
+      const a = i/16*Math.PI*2 + now/400;
+      b.fillRect(x+Math.round(Math.cos(a)*rr), y+Math.round(Math.sin(a)*rr), 2,2);
+    }
+  }
+  if(blink) b.globalAlpha=0.35;
+  // 影
+  b.fillStyle="rgba(0,0,0,.35)";
+  b.fillRect(x-8, y+10, 16, 3);
+  // 本体
+  const spr = lean===0 ? carSpr : (lean>0? carLeanR : carLeanL);
+  b.drawImage(spr, x-(spr.width>>1), y-12);
+  // ターボ炎（2フレーム）
+  if(turbo){
+    const f=Math.floor(now/80)%2;
+    b.fillStyle="#f8b800";
+    b.fillRect(x-3, y+12, 6, 2);
+    b.fillRect(x-2, y+14, 4, f?3:2);
+    b.fillStyle="#d82800";
+    b.fillRect(x-1, y+16+(f?1:0), 2, 2);
+  }
+  b.globalAlpha=1;
+}
+
+/* ---------- orientation guard ---------- */
+function checkOrientation(){
+  const isTouch = ("ontouchstart" in window) || navigator.maxTouchPoints>0;
+  const portrait = window.innerHeight > window.innerWidth;
+  rotateHint.classList.toggle("hidden", !(isTouch && portrait));
+}
+window.addEventListener("resize", checkOrientation);
+checkOrientation();
+
+/* ---------- main loop ---------- */
+resetWorld(true);
+let lastT = performance.now();
+function loop(t){
+  const dt = Math.min(0.05, (t-lastT)/1000);
+  lastT = t;
+  update(dt);
+  render();
+  requestAnimationFrame(loop);
+}
+requestAnimationFrame(loop);
+</script>
+</body>
+</html>
